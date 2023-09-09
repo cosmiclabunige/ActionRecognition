@@ -1,29 +1,35 @@
-import shutil
-import cv2.cv2 as cv2
-import glob
-import os
-import numpy as np
-from CNN_architectures import *
+try:
+    import os
+    import cv2
+    import glob
+    import shutil
+    import numpy as np
+
+    from action_recognition.cnn_arch import *
+except Exception as e:
+    print('Error loading modules in convert_tflite.py: ', e)
 
 
-
-class TfliteConverterClass:
+class ConvertTFLITE:
     """
     Class to convert the h5 models in tflite.
     The input parameters are:
 
-    - *modelPath2Convert*: the path containing the h5 models to be converted
-    - *datasetPath*: the path of the dataset used for the representative dataset
-    - *transformation*: the transformation applied to the input dataset, it must be compliant with the model path name and the dataset path name
-    - *CNNModel*: model that has to be trained (default is model 2). Possible choices are in the range 1-3
+    - modelPath2Convert: the path containing the h5 models to be converted
+    - datasetPath: the path of the dataset used for the representative dataset
+    - transformation: the transformation applied to the input dataset, it must be compliant with the model path name and the dataset path name
+    - CNNModel: model that has to be trained (default is model 2). Possible choices are in the range 1-3
 
     """
+
     def __init__(self,
-                 modelPath2Convert: str = None,  # the input path containing the h5 models to be converted
+                 # the input path containing the h5 models to be converted
+                 modelPath2Convert: str = None,
                  datasetPath: str = None,  # the dataset used to create the representative dataset
                  transformation: str = None,  # the transformation applied to the original data
                  CNNModel: int = 2,  # CNN Model to be converted
-                 params: dict = None,  # contains the parameters concerning the input size, the LSTM and Dense neurons
+                 # contains the parameters concerning the input size, the LSTM and Dense neurons
+                 params: dict = None,
                  ):
         if params is not None:
             if "nClasses" not in params.keys():
@@ -33,7 +39,7 @@ class TfliteConverterClass:
             if "size" not in params.keys():
                 print("Input Size missing: default assigned")
                 self.__size = (
-                15, 224, 224)  # default input size of the videos, the first dimension represents the frames,
+                    15, 224, 224)  # default input size of the videos, the first dimension represents the frames,
                 # the second and the third the dimension of the images. The number of channels will be automatically assigned later
             else:
                 if not len(params["size"]) == 3:
@@ -64,7 +70,8 @@ class TfliteConverterClass:
         # check if the model path to be converted is not none and exists
         assert modelPath2Convert is not None, "Model path to be converted is none"
         assert os.path.exists(modelPath2Convert), "Model Path does not exist"
-        self.__globModels = glob.glob(modelPath2Convert + '/*')  # take all the files in the path
+        # take all the files in the path
+        self.__globModels = glob.glob(modelPath2Convert + '/*')
 
         self.__CNNModel = CNNModel
         if not 1 <= self.__CNNModel <= 9:
@@ -78,21 +85,25 @@ class TfliteConverterClass:
                 indexToDel.append(i)
         for ele in sorted(indexToDel, reverse=True):
             del self.__globModels[ele]
-        assert len(self.__globModels) > 0, "Not models to convert"  # check if the list of model is not empty
+        # check if the list of model is not empty
+        assert len(self.__globModels) > 0, "Not models to convert"
         self.__globModels.sort()
 
-        self.__convertedModelPath = "../ModelsTFLite/" + transformation  # assign by default where the converted models will be saved
+        # assign by default where the converted models will be saved
+        self.__convertedModelPath = "../ModelsTFLite/" + transformation
         if not os.path.exists(self.__convertedModelPath):
             os.makedirs(self.__convertedModelPath)
         # check if the dataset path exists
         assert os.path.exists(datasetPath), "Dataset Path does not exist"
         self.__dataPath = datasetPath
 
-        listOfPossibleTrans = ["Canny", "Sobel_XY", "Roberts", "Binary", "No_Trans_Gray", "No_Trans"]
+        listOfPossibleTrans = ["Canny", "Sobel_XY",
+                               "Roberts", "Binary", "No_Trans_Gray", "No_Trans"]
         if transformation is None:  # if transformation is none assign the default
             print("Transformation assigned by default: No transformation")
             self.__transformation = "No_Trans"  # default option No Transformation
-        elif transformation not in listOfPossibleTrans:  # if transformation is not in the list of possible transformation assign the default
+        # if transformation is not in the list of possible transformation assign the default
+        elif transformation not in listOfPossibleTrans:
             print("Requested transformation is not in the list of the possible transformation: No_Tran "
                   "assigned by default")
             self.__transformation = "No_Trans"  # default option No Transformation
@@ -102,20 +113,26 @@ class TfliteConverterClass:
         assert self.__transformation in modelPath2Convert, "Input model path must contain the applied transformation"
         assert self.__transformation in self.__dataPath, "Dataset path must contain the applied transformation"
 
-        self.__modelDirTmp = '../ModelsTmp'  # assign by default the folder for the temporary models
+        # assign by default the folder for the temporary models
+        self.__modelDirTmp = '../ModelsTmp'
         if not os.path.exists(self.__modelDirTmp):
             os.mkdir(self.__modelDirTmp)
 
     def create_tflite_fp32(self):  # convert in the tflite fp32 bit model
         for m in self.__globModels:
             self.__save_temporary_model(m)  # save the h5 model as pb
-            name = (m.split('/')[-1]).split('.')[0]  # extract automatically the name of the model
+            # extract automatically the name of the model
+            name = (m.split('/')[-1]).split('.')[0]
             modelDirTmp = os.path.join(self.__modelDirTmp, name)
-            converter = tf.lite.TFLiteConverter.from_saved_model(modelDirTmp)  # initialize the converter object
+            converter = tf.lite.TFLiteConverter.from_saved_model(
+                modelDirTmp)  # initialize the converter object
             converter.optimizations = [tf.lite.Optimize.DEFAULT]
-            nameFull = os.path.join(self.__convertedModelPath, name + "_fp32.tflite")
-            converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS]
-            converter.target_spec.supported_types = [tf.float32]  # specify the representation of the operations inside the tflite model
+            nameFull = os.path.join(
+                self.__convertedModelPath, name + "_fp32.tflite")
+            converter.target_spec.supported_ops = [
+                tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS]
+            # specify the representation of the operations inside the tflite model
+            converter.target_spec.supported_types = [tf.float32]
             # invoke the conversion and save the tflite model
             tflite_modelFP32 = converter.convert()
             with open(nameFull, 'wb') as f:
@@ -125,30 +142,40 @@ class TfliteConverterClass:
     def create_tflite_fp16(self):  # convert in the tflite fp16 bit model
         for m in self.__globModels:
             self.__save_temporary_model(m)  # save the h5 model as pb
-            name = (m.split('/')[-1]).split('.')[0]  # extract automatically the name of the model
+            # extract automatically the name of the model
+            name = (m.split('/')[-1]).split('.')[0]
             modelDirTmp = os.path.join(self.__modelDirTmp, name)
-            converter = tf.lite.TFLiteConverter.from_saved_model(modelDirTmp)  # initialize the converter object
+            converter = tf.lite.TFLiteConverter.from_saved_model(
+                modelDirTmp)  # initialize the converter object
             converter.optimizations = [tf.lite.Optimize.DEFAULT]
-            nameFull = os.path.join(self.__convertedModelPath, name + "_fp16.tflite")
-            converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS]
-            converter.target_spec.supported_types = [tf.float16]  # specify the representation of the operations inside the tflite model
+            nameFull = os.path.join(
+                self.__convertedModelPath, name + "_fp16.tflite")
+            converter.target_spec.supported_ops = [
+                tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS]
+            # specify the representation of the operations inside the tflite model
+            converter.target_spec.supported_types = [tf.float16]
             tflite_modelFP16 = converter.convert()
             # invoke the conversion and save the tflite model
             with open(nameFull, 'wb') as f:
                 f.write(tflite_modelFP16)
             print("TFLITE FP16 MODEL {} CREATED".format(name))
 
-    def __save_temporary_model(self, m):  # function used to create a pb file of the model to be converted
-        neomodel = deep_network_test_and_tflite(self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
+    # function used to create a pb file of the model to be converted
+    def __save_temporary_model(self, m):
+        neomodel = deep_network_test_and_tflite(
+            self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
         neomodel.load_weights(m)
         neomodel.summary()
 
         # create the concrete function for the conversion of the h5 model in pb format
         run_model = tf.function(lambda x: neomodel(x))
-        shape = np.asarray([neomodel.inputs[0].shape[i] for i in range(1, len(neomodel.inputs[0].shape))])
+        shape = np.asarray([neomodel.inputs[0].shape[i]
+                           for i in range(1, len(neomodel.inputs[0].shape))])
         shape = np.concatenate(([1], shape))
-        concrete_func = run_model.get_concrete_function(tf.TensorSpec(shape, neomodel.inputs[0].dtype))
-        modelDirTmp = os.path.join(self.__modelDirTmp, (m.split('/')[-1]).split('.')[0])
+        concrete_func = run_model.get_concrete_function(
+            tf.TensorSpec(shape, neomodel.inputs[0].dtype))
+        modelDirTmp = os.path.join(
+            self.__modelDirTmp, (m.split('/')[-1]).split('.')[0])
         if os.path.exists(modelDirTmp):
             shutil.rmtree(modelDirTmp)
             os.mkdir(modelDirTmp)
@@ -156,4 +183,5 @@ class TfliteConverterClass:
             os.mkdir(modelDirTmp)
         # convert the model in pb format
         neomodel.save(modelDirTmp, save_format="tf", signatures=concrete_func)
-        print("Tmp folder for Model {} conversion created!".format(m.split('/')[-1]))
+        print("Tmp folder for Model {} conversion created!".format(
+            m.split('/')[-1]))

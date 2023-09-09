@@ -1,57 +1,63 @@
-import glob
-import os
-import warnings
-import numpy as np
-import pickle as pkl
-import pandas as pd
-import seaborn as sns
-from sklearn.preprocessing import label_binarize
-from sklearn.metrics import roc_curve, auc, confusion_matrix
-from CNN_architectures import *
-import matplotlib.pyplot as plt
-from keras_video import VideoFrameGenerator
+try:
+    import os
+    import glob
+    import warnings
+    import numpy as np
+    import pandas as pd
+    import pickle as pkl
+    import seaborn as sns
+    import matplotlib.pyplot as plt
 
-config = tf.compat.v1.ConfigProto(log_device_placement=True)
-config.gpu_options.allow_growth = True
+    from action_recognition.cnn_arch import *
+    from keras_video import VideoFrameGenerator
+    from sklearn.preprocessing import label_binarize
+    from sklearn.metrics import roc_curve, auc, confusion_matrix
+
+    config = tf.compat.v1.ConfigProto(log_device_placement=True)
+    config.gpu_options.allow_growth = True
+except Exception as e:
+    print('Error loading modules in analyze_results.py: ', e)
 
 
-class AnalyzeResultsClass:
+class AnalyzeResults:
     """
-    This class is used to show the results concerning the accuracy of the model on the test data, and to plot the confusion matrices and ROC and AUC curves.
-    The input parameters are:
-
-    - *modelPath*: the path where model to be tested are saved
-    - *videoDatasetPath*: the dataset path that will be used for plotting the results
-    - *stratifiedKFolds*: if true the models trained with KFolds strategy will be analyzed, else the models trained without the KFolds will be taken into consideration
-    - *xTestPath*: the path/file containing the names of the data that form the test set. It can be a pickle file or a path of the folder with the data to be tested
-    - *transformation*: the transformation applied to the original dataset. It is used to check if the model path, the video path, and the test path are consistent
-    - *classesNames*: list containing the names of the classes for plotting the results
-    - *CNNModel*: model on which compute the test accuracy, metrics, confusion matrices (default is model 2). Possible choices are in the range 1-9
+    This class is used to show the results concerning the accuracy of the model on the test data, 
+    and to plot the confusion matrices and ROC and AUC curves.
     """
 
-    def __init__(self,
-                 modelPath: str = None,  # The model to be analyzed
-                 videoDatasetPath: str = None,  # The path with the whole dataset
-                 stratifiedKFolds: bool = True,  # variable that identifies if stratified KFolds has been used
-                 xTestPath: str = None,  # path containing the names of data used as test set
-                 transformation: str = None,  # transformation applied to the original dataset
-                 classesNames: list = None,  # name of classes, used for plotting the results
-                 CNNModel: int = 2,  # CNN model to extract the features
-                 params: dict = None,  # contains the parameters concerning the input size, the LSTM and Dense neurons
-                 ):
-        assert os.path.exists(videoDatasetPath), "Dataset does not exist"  # check if the dataset exist
-        self.__dataPath = videoDatasetPath + '/{classname}/*.avi'  # used by keras video generator
-        self.__globInputVideos = glob.glob(videoDatasetPath + "/*/*")  # get all the names of data
+    def __init__(self, modelPath=None, videoDatasetPath=None, stratifiedKFolds=True, xTestPath=None, transformation=None, classesNames=None, CNNModel=2, params=None):
+        """
+        Initialize the AnalyzeResults class with parameters.
+
+        Args:
+            modelPath (str): The path where model to be tested is saved.
+            videoDatasetPath (str): The dataset path used for plotting the results.
+            stratifiedKFolds (bool): If True, models trained with KFolds strategy will be analyzed.
+            xTestPath (str): The path/file containing the names of the data that form the test set.
+            transformation (str): The transformation applied to the original dataset.
+            classesNames (list): List containing the names of the classes for plotting the results.
+            CNNModel (int): Model on which to compute the test accuracy, metrics, confusion matrices (default is model 2).
+            params (dict): Parameters concerning the input size, the LSTM, and Dense neurons.
+        """
+        assert os.path.exists(
+            videoDatasetPath), "Dataset does not exist"  # check if the dataset exist
+        self.__dataPath = videoDatasetPath + \
+            '/{classname}/*.avi'  # used by keras video generator
+        self.__globInputVideos = glob.glob(
+            videoDatasetPath + "/*/*")  # get all the names of data
         self.__globInputVideos.sort()
-        self.__labels = np.asarray(
-            [int(i.split('/')[-2]) for i in self.__globInputVideos])  # get the labels of data automatically
-        self.__classes = list(np.unique([i.split('/')[-2] for i in self.__globInputVideos]))  # get the classes
+        # get the labels of data automatically
+        self.__labels = np.asarray([int(i.split('/')[-2])
+                                   for i in self.__globInputVideos])
+        self.__classes = list(np.unique(
+            [i.split('/')[-2] for i in self.__globInputVideos]))  # get the classes
         self.__classes.sort()
         self.__nClasses = len(self.__classes)  # get the number of classes
         if params is not None:
             if "size" not in params.keys():
                 print("Input Size missing: default assigned")
-                self.__size = (15, 224, 224)  # default input size of the videos, the first dimension represents the frames,
+                # default input size of the videos, the first dimension represents the frames,
+                self.__size = (15, 224, 224)
                 # the second and the third the dimension of the images. The number of channels will be automatically assigned later
             else:
                 if not len(params["size"]) == 3:
@@ -122,11 +128,13 @@ class AnalyzeResultsClass:
         assert len(self.__globModels) > 0, "There are not models to test"
         self.__globModels.sort()
 
-        listOfPossibleTrans = ["Canny", "Sobel_XY", "Roberts", "Binary", "No_Trans_Gray", "No_Trans"]
+        listOfPossibleTrans = ["Canny", "Sobel_XY",
+                               "Roberts", "Binary", "No_Trans_Gray", "No_Trans"]
         if transformation is None:  # if transformation is none assign the default
             print("Transformation assigned by default: No transformation")
             self.__transformation = "No_Trans"  # default option No Transformation
-        elif transformation not in listOfPossibleTrans:  # if transformation is not in the list of possible transformation assign the default
+        # if transformation is not in the list of possible transformation assign the default
+        elif transformation not in listOfPossibleTrans:
             print("Requested transformation is not in the list of the possible transformation: No_Tran "
                   "assigned by default")
             self.__transformation = "No_Trans"  # default option No Transformation
@@ -158,21 +166,28 @@ class AnalyzeResultsClass:
             print("Test {} models on KFolds".format(self.__transformation))
         else:
             # else, check if there is only one list of data to be tested
-            assert len(self.__X_test) == 1, " The list must have only one dimension"
+            assert len(
+                self.__X_test) == 1, " The list must have only one dimension"
             print("Test {} model without KFolds".format(self.__transformation))
         self.__stratifiedKFolds = stratifiedKFolds
 
         self.__channels = 1
-        if transformation == "No_Trans":  # No Transformation is the only one with 3 channels (RGB)
+        # No Transformation is the only one with 3 channels (RGB)
+        if transformation == "No_Trans":
             self.__channels = 3
-        self.__size = self.__size + (self.__channels,)  # add the channel to the size of the input videos
+        # add the channel to the size of the input videos
+        self.__size = self.__size + (self.__channels,)
 
-    def testModels(self):  # function used to print the accuracy on the test set for each model contained in globModels
+    def test_models(self):
+        """
+        Function used to print the accuracy on the test set for each model contained in globModels.
+        """
         testAccList = []
         for mod in self.__globModels:
             if not self.__stratifiedKFolds and "OneFold" not in mod:
                 continue
-            model = deep_network_test_and_tflite(self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
+            model = deep_network_test_and_tflite(
+                self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
             model.load_weights(mod)
             print("Testing {}".format(mod.split('/')[-1]))
             if self.__stratifiedKFolds and len(self.__X_test) > 1:
@@ -183,28 +198,36 @@ class AnalyzeResultsClass:
             else:
                 xT = self.__X_test[0]
                 yT = self.__y_test
-            testGen = self.__generator(data_to_take=xT)  # create the generator for testing the model
+            # create the generator for testing the model
+            testGen = self.__generator(data_to_take=xT)
             pred = model.predict(testGen, steps=len(xT))
             y_pred = np.argmax(pred, axis=1)
             true_labels = yT
-            testAccTmp = 1 - np.count_nonzero(y_pred - true_labels) / len(y_pred)
+            testAccTmp = 1 - \
+                np.count_nonzero(y_pred - true_labels) / len(y_pred)
             print('Test accuracy:', testAccTmp)
             testAccList.append(testAccTmp)
         testAccArray = np.asarray(testAccList)
         modelName = self.__globModels[0].split('_')[-1].split('.')[0]
-        print("Average Accuracy {}: {} +- {}".format(modelName, np.mean(testAccArray), np.std(testAccArray)))
+        print("Average Accuracy {}: {} +- {}".format(modelName,
+              np.mean(testAccArray), np.std(testAccArray)))
         return testAccList
 
-    def confusion_matrix(self):  # Function used to plot the confusion matrix
+    def confusion_matrix(self):
+        """
+        Function used to plot the confusion matrix.
+        """
         cm = np.zeros((self.__nClasses, self.__nClasses))
         if self.__stratifiedKFolds:
-            print("Computing Confusion Matrix Stratified KFolds {}".format(self.__transformation))
+            print("Computing Confusion Matrix Stratified KFolds {}".format(
+                self.__transformation))
         else:
             print("Computing Confusion Matrix {}".format(self.__transformation))
         for mod in self.__globModels:
             if not self.__stratifiedKFolds and "OneFold" not in mod:
                 continue
-            model = deep_network_test_and_tflite(self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
+            model = deep_network_test_and_tflite(
+                self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
             model.load_weights(mod)
             if self.__stratifiedKFolds and len(self.__X_test) > 1:
                 # take the correct dataset to test the model along the folds
@@ -222,28 +245,36 @@ class AnalyzeResultsClass:
             if not self.__stratifiedKFolds:  # If the KFolds technique is not used plot the confusion matrix for each model,
                 # else sum the results for each fold
                 self.__visualizeConfMatrix(cm)
-                cm = np.zeros((self.__nClasses, self.__nClasses))  # Reinitialize the confusion matrix
+                # Reinitialize the confusion matrix
+                cm = np.zeros((self.__nClasses, self.__nClasses))
         if self.__stratifiedKFolds:  # If the KFolds technique is used plot the cumulated confusion matrices
             self.__visualizeConfMatrix(cm)
 
-    def computeROCandAUC(self, labelsOfPositive):  # function to plot the ROC and AUC curves. It takes in input the list
-        # of the classes that must be considered as positive samples.
-        # Initialization of dictionaries used to print the ROC and AUC curves
+    def compute_ROC_AUC(self, labelsOfPositive):
+        """
+        Function to compute ROC and AUC curves.
+
+        Args:
+            labelsOfPositive (list): List of classes to consider as positive samples.
+        """
         fpr = dict()
         tpr = dict()
         roc_auc = dict()
         # Check if the list of positive is not empty
-        assert len(labelsOfPositive) > 0, "list of positive classes must be not empty"
+        assert len(
+            labelsOfPositive) > 0, "list of positive classes must be not empty"
         for i in labelsOfPositive:
             # Check if the positive labels are correct
             assert i < self.__nClasses, "the labels of positive samples are bigger than the number of classes"
         if self.__stratifiedKFolds:
-            print("Computing ROC and AUC Curves Stratified KFolds {}".format(self.__transformation))
+            print("Computing ROC and AUC Curves Stratified KFolds {}".format(
+                self.__transformation))
         else:
             print("Computing ROC and AUC Curves {}".format(self.__transformation))
         ii = 0
         for mod in self.__globModels:
-            model = deep_network_test_and_tflite(self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
+            model = deep_network_test_and_tflite(
+                self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
             model.load_weights(mod)
             if self.__stratifiedKFolds:
                 # Take the correct dataset to test the model along the folds
@@ -268,10 +299,13 @@ class AnalyzeResultsClass:
         if self.__stratifiedKFolds:
             self.__visualizeROCandAUC(fpr, tpr, roc_auc)
 
-    def computeMetrics(self, labelsOfPositive):  # Function to compute al the metrics: precision, recall, specifity,
-        # false positive rate, false negative rate, accuracy, and f1 score. It takes in input the list of the classes
-        # that must be considered as positive samples.
-        # Initialization of the results lists
+    def compute_metrics(self, labelsOfPositive):
+        """
+        Function to compute metrics: precision, recall, specificity, FPR, FNR, accuracy, and f1 score.
+
+        Args:
+            labelsOfPositive (list): List of classes to consider as positive samples.
+        """
         precision = []
         recall = []
         specifity = []
@@ -280,12 +314,14 @@ class AnalyzeResultsClass:
         accuracy = []
         f1score = []
         # Check if the list of positive is not empty
-        assert len(labelsOfPositive) > 0, "list of positive classes must be not empty"
+        assert len(
+            labelsOfPositive) > 0, "list of positive classes must be not empty"
         for i in labelsOfPositive:
             # Check if the positive labels are correct
             assert i < self.__nClasses, "the labels of positive samples are bigger than the number of classes"
         for i, mod in enumerate(self.__globModels):
-            model = deep_network_test_and_tflite(self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
+            model = deep_network_test_and_tflite(
+                self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
             model.load_weights(mod)
             if self.__stratifiedKFolds:
                 # Take the correct dataset to test the model along the folds
@@ -330,7 +366,7 @@ class AnalyzeResultsClass:
         Metrics = {"Prec": np.mean(precision), "Rec": np.mean(recall), "Spec": np.mean(specifity), "FPR": np.mean(FPR),
                    "FNR": np.mean(FNR), "Acc": np.mean(accuracy), "F1": np.mean(f1score)}
         fileName = "../Results/" + self.__transformation + "/" + self.__transformation + "_Metrics_Model{}.txt".format(
-                self.__CNNModel)
+            self.__CNNModel)
         # Save the results in a file
         print("Metrics have been save at ", fileName)
         with open(fileName, 'w') as f:
@@ -339,7 +375,12 @@ class AnalyzeResultsClass:
         self.__visualizeMetrics(Metrics)
 
     def __visualizeMetrics(self, metrics):
-        # Function for visualizing the metrics as a bar-plot"
+        """
+        Function for visualizing the metrics as a bar-plot.
+
+        Args:
+            metrics.
+        """
         prec = metrics["Prec"]
         rec = metrics["Rec"]
         spec = metrics["Spec"]
@@ -363,15 +404,24 @@ class AnalyzeResultsClass:
         plt.ylim((0, 1.05))
         plt.yticks(np.arange(0, 1.05, 0.2))
         plt.axhline(y=1, color='r', linestyle='--', linewidth=6)
-        title = "Metrics Model {} {}".format(self.__CNNModel, self.__transformation)
+        title = "Metrics Model {} {}".format(
+            self.__CNNModel, self.__transformation)
         plt.title(title, fontsize=28)
         plt.tick_params(axis='x', labelsize=24)
         plt.tick_params(axis='y', labelsize=24)
         plt.show()
 
-    def __visualizeConfMatrix(self, cm):  # Function plotting the confusion matrix
-        cm_df = pd.DataFrame(cm, index=self.__classesNames, columns=self.__classesNames)
-        plt.figure(num=None, figsize=(10, 10), dpi=80, facecolor='w', edgecolor='k')
+    def __visualizeConfMatrix(self, cm):
+        """
+        Function plotting the confusion matrix.
+
+        Args:
+            cm.
+        """
+        cm_df = pd.DataFrame(cm, index=self.__classesNames,
+                             columns=self.__classesNames)
+        plt.figure(num=None, figsize=(10, 10), dpi=80,
+                   facecolor='w', edgecolor='k')
 
         sns.set(font_scale=2.5)
         s = np.sum(cm, axis=1)
@@ -382,7 +432,8 @@ class AnalyzeResultsClass:
         plt.xlabel('Predicted label', fontsize=28, fontweight="bold")
 
         if "Model" in self.__globModels[0]:
-            nameModel = " Model" + self.__globModels[0][self.__globModels[0].find("Model") + 5]
+            nameModel = " Model" + \
+                self.__globModels[0][self.__globModels[0].find("Model") + 5]
         else:
             nameModel = ""
         nameTran = self.__transformation
@@ -396,6 +447,12 @@ class AnalyzeResultsClass:
         plt.show()
 
     def __compute_ROC(self, y_score, true_labels, labelsOfPositive):
+        """
+        Function compute ROC.
+
+        Args:
+            y_score, true_labels, labelsOfPositive.
+        """
         cl = np.asarray([int(i) for i in self.__classes])
         y_test = label_binarize(true_labels, classes=cl)
         y_test_tmp = []
@@ -403,10 +460,17 @@ class AnalyzeResultsClass:
         for i in labelsOfPositive:
             y_test_tmp = np.concatenate((y_test_tmp, y_test[:, i]))
             y_score_tmp = np.concatenate((y_score_tmp, y_score[:, i]))
-        fpr, tpr, _ = roc_curve(y_test_tmp, y_score_tmp, drop_intermediate=False)
+        fpr, tpr, _ = roc_curve(y_test_tmp, y_score_tmp,
+                                drop_intermediate=False)
         return fpr, tpr
 
-    def __visualizeROCandAUC(self, fpr, tpr, roc_auc):  # Function plotting the ROC and AUC
+    def __visualizeROCandAUC(self, fpr, tpr, roc_auc):
+        """
+        Function plotting the ROC and AUC.
+
+        Args:
+            cm.
+        """
         all_fpr = np.unique(np.concatenate([fpr[i] for i in range(len(fpr))]))
         mean_tpr = np.zeros_like(all_fpr)
         for i in range(len(fpr)):
@@ -439,7 +503,8 @@ class AnalyzeResultsClass:
         plt.xticks(fontsize=24)
         plt.yticks(fontsize=24)
         if "Model" in self.__globModels[0]:
-            nameModel = " Model" + self.__globModels[0][self.__globModels[0].find("Model") + 5]
+            nameModel = " Model" + \
+                self.__globModels[0][self.__globModels[0].find("Model") + 5]
         else:
             nameModel = ""
         nameTran = self.__transformation
@@ -453,7 +518,13 @@ class AnalyzeResultsClass:
         plt.legend(loc="lower right", fontsize=24)
         plt.show()
 
-    def __generator(self, data_to_take):  # function that returns the keras video generator
+    def __generator(self, data_to_take):
+        """
+        Function that returns the keras video generator.
+
+        Args:
+            data_to_take: Data to use for generating sequences.
+        """
         gen = VideoFrameGenerator(rescale=1 / 255.,
                                   classes=self.__classes,
                                   glob_pattern=self.__dataPath,

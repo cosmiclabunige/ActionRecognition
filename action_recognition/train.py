@@ -1,31 +1,18 @@
-import os
-import glob
-import pickle
-import numpy as np
-from keras_video import VideoFrameGenerator
-from sklearn.model_selection import StratifiedKFold, train_test_split
-from CNN_architectures import *
+try:
+    import os
+    import glob
+    import pickle
+    import numpy as np
+
+    from action_recognition.utils import *
+    from action_recognition.cnn_arch import *
+    from keras_video import VideoFrameGenerator
+    from sklearn.model_selection import StratifiedKFold, train_test_split
+except Exception as e:
+    print('Error loading modules in train.py: ', e)
 
 
-class LearningRateReducerCb(tf.keras.callbacks.Callback):
-    # class for reducing the learning rate every 5 epochs, it's called automatically by the fit function
-    def on_epoch_end(self, epoch, logs={}):
-        if epoch % 5 == 0:
-            old_lr = self.model.optimizer.lr.read_value()
-            new_lr = old_lr * 0.9
-            self.model.optimizer.lr.assign(new_lr)
-
-
-class LearningRateReducerCbFineTuning(tf.keras.callbacks.Callback):
-    # class for reducing the learning rate in the fine-tuning procedure every 7 epochs, it's called automatically by the fit function
-    def on_epoch_end(self, epoch, logs={}):
-        if epoch % 7 == 0:
-            old_lr = self.model.optimizer.lr.read_value()
-            new_lr = old_lr * 0.5
-            self.model.optimizer.lr.assign(new_lr)
-
-
-class TrainVideoClassifierClass:
+class TrainVideoClassifier:
     """
     This class is used to train the three models.
     The input parameters are:
@@ -48,7 +35,7 @@ class TrainVideoClassifierClass:
                  videoDatasetPath: str = None,  # input dataset path
                  nFolds: int = 1,  # number of folds, if >1 stratified KFolds technique is adopted
                  transformation: str = None,  # transformation that has been applied to the input data, default No_Transformation. It must be compliant with the name of the videoDatasetPath
-                 CNNModel: int = 2 # CNN model to extract the features
+                 CNNModel: int = 2  # CNN model to extract the features
                  ):
         if params is not None:
             if "batch_size" not in params.keys():
@@ -68,7 +55,8 @@ class TrainVideoClassifierClass:
                 self.__lr = params["learning_rate"]
             if "size" not in params.keys():
                 print("Input Size missing: default assigned")
-                self.__size = (15, 224, 224)  # default input size of the videos, the first dimension represents the frames,
+                # default input size of the videos, the first dimension represents the frames,
+                self.__size = (15, 224, 224)
                 # the second and the third the dimension of the images. The number of channels will be automatically assigned later
             else:
                 if not len(params["size"]) == 3:
@@ -93,22 +81,30 @@ class TrainVideoClassifierClass:
             self.__size = (15, 224, 224)
             print("Patience for early stop assigned by default: 10")
             self.__patience = 10
-        assert os.path.exists(videoDatasetPath), "Dataset does not exist"  # check if video path exists
+        # check if video path exists
+        assert os.path.exists(videoDatasetPath), "Dataset does not exist"
 
-        self.__dataPath = videoDatasetPath + '/{classname}/*.avi'  # path used by the video generator
-        self.__globInputVideos = glob.glob(videoDatasetPath + "/*/*")  # globInputVideos contains all the data as paths
+        # path used by the video generator
+        self.__dataPath = videoDatasetPath + '/{classname}/*.avi'
+        # globInputVideos contains all the data as paths
+        self.__globInputVideos = glob.glob(videoDatasetPath + "/*/*")
         self.__globInputVideos.sort()
-        self.__labels = np.asarray([int(i.split('/')[-2]) for i in self.__globInputVideos])  # automatic labels extraction
-        self.__classes = list(np.unique([i.split('/')[-2] for i in self.__globInputVideos]))  # classes of the dataset
+        # automatic labels extraction
+        self.__labels = np.asarray([int(i.split('/')[-2])
+                                   for i in self.__globInputVideos])
+        self.__classes = list(np.unique(
+            [i.split('/')[-2] for i in self.__globInputVideos]))  # classes of the dataset
         self.__classes.sort()
         self.__nClasses = len(self.__classes)  # number of classes
 
-        listOfPossibleTrans = ["Canny", "Sobel_XY", "Roberts", "Binary", "No_Trans_Gray", "No_Trans"]  # list of possible transformations
+        listOfPossibleTrans = ["Canny", "Sobel_XY", "Roberts", "Binary",
+                               "No_Trans_Gray", "No_Trans"]  # list of possible transformations
         if transformation is None:  # if transformation is not given then assigned the default
             print("Transformation assigned by default: No transformation")
             self.__transformation = "No_Trans"  # default option No Transformation
             assert self.__transformation in videoDatasetPath, "Input Video path must contain the applied transformation"
-        elif transformation not in listOfPossibleTrans:  # if the given transformation does not exist then assigned the default
+        # if the given transformation does not exist then assigned the default
+        elif transformation not in listOfPossibleTrans:
             print("Requested transformation is not in the list of the possible transformation: No_Tran "
                   "assigned by default")
             self.__transformation = "No_Trans"
@@ -118,9 +114,11 @@ class TrainVideoClassifierClass:
             self.__transformation = transformation
             assert self.__transformation in videoDatasetPath, "Input Video path must contain the applied transformation"
         self.__channels = 1
-        if transformation == "No_Trans":  # No Transformation is the only one with 3 channels (RGB)
+        # No Transformation is the only one with 3 channels (RGB)
+        if transformation == "No_Trans":
             self.__channels = 3
-        self.__size = self.__size + (self.__channels,)  # add the channel to the size of the input videos
+        # add the channel to the size of the input videos
+        self.__size = self.__size + (self.__channels,)
 
         tmp1 = "../Results"  # Assign by default the path where the models will be saved
         if not os.path.exists(tmp1):
@@ -135,7 +133,8 @@ class TrainVideoClassifierClass:
             self.__nFolds = nFolds  # if nFolds > 1 then stratified K-Folds technique will be applied
         else:
             print("Dataset will be split in training 60%, validation 20%, and test 20%")
-            self.__nFolds = 1  # if not, the data will be automatically split in training, validation, and test
+            # if not, the data will be automatically split in training, validation, and test
+            self.__nFolds = 1
 
         self.__tensorboardLogDir = "../logdir"
         if not os.path.exists(self.__tensorboardLogDir):
@@ -145,7 +144,8 @@ class TrainVideoClassifierClass:
         self.__callbacks = [tf.keras.callbacks.EarlyStopping(patience=self.__patience, monitor='val_loss'), LearningRateReducerCb(),
                             tf.keras.callbacks.TensorBoard(log_dir=self.__tensorboardLogDir)]
         # The second callback is used during the fine-tuning procedure to reduce the learning rate along the epochs
-        self.__callbacksFineTuning = [LearningRateReducerCbFineTuning(), tf.keras.callbacks.TensorBoard(log_dir=self.__tensorboardLogDir)]
+        self.__callbacksFineTuning = [LearningRateReducerCbFineTuning(
+        ), tf.keras.callbacks.TensorBoard(log_dir=self.__tensorboardLogDir)]
 
         self.__LSTMNeurons = 128
         self.__DenseNeurons = 64
@@ -155,46 +155,57 @@ class TrainVideoClassifierClass:
             print("CNN Model option not valid: default assigned")
             self.__CNNModel = 2
 
-
     def training(self):  # training function
         if self.__nFolds == 1:
-            self.__oneFoldTraining()
+            self.__one_fold_training()
         else:
-            self.__stratifiedKFoldTraining()
+            self.__stratified_k_fold()
 
-
-    def __stratifiedKFoldTraining(self):  # function to train the models along the folds
+    # function to train the models along the folds
+    def __stratified_k_fold(self):
         X = self.__globInputVideos
         y = self.__labels
         skf = StratifiedKFold(n_splits=self.__nFolds, shuffle=True,
                               random_state=123)  # create the stratified KFolds object
         fo = 0
-        testDict = {"X_Test": [], "y_Test": []}  # dictionary to save all the test sets to be used for further analyses
-        for train_index, test_index in skf.split(X, y):  # for loop along the folds
+        # dictionary to save all the test sets to be used for further analyses
+        testDict = {"X_Test": [], "y_Test": []}
+        # for loop along the folds
+        for train_index, test_index in skf.split(X, y):
             print("TRAINING FOLD: ", fo)
-            X_train = [X[i] for i in train_index]  # take the training data for the fold
+            # take the training data for the fold
+            X_train = [X[i] for i in train_index]
             y_train = y[train_index]  # and the label of the training data
             X_tr, X_val = train_test_split(X_train, shuffle=True, stratify=y_train, train_size=60 / 80,
                                            random_state=123 + fo * 834)  # split the training data in training and validation
             X_test = [X[i] for i in test_index]  # take the test data
-            y_test = np.asarray([y[i] for i in test_index])  # and the labels of the test set
+            # and the labels of the test set
+            y_test = np.asarray([y[i] for i in test_index])
             testDict["X_Test"].append(X_test)
             testDict["y_Test"].append(y_test)
             # Use the keras video generator for the training of the models
             train = self.__generator(data_to_take=X_tr, bs=self.__bs)
             valid = self.__generator(data_to_take=X_val, bs=self.__bs)
             test = self.__generator(data_to_take=X_test, bs=1, sh=False)
-            model = deep_network_train(self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)  # create the model
-            optimizer = tf.keras.optimizers.Adam(self.__lr)  # definition of the optimizer, Adam is chosen
-            model.compile(optimizer, 'categorical_crossentropy', metrics=['accuracy'])
+            model = deep_network_train(self.__CNNModel, self.__size, self.__LSTMNeurons,
+                                       self.__DenseNeurons, self.__nClasses)  # create the model
+            # definition of the optimizer, Adam is chosen
+            optimizer = tf.keras.optimizers.Adam(self.__lr)
+            model.compile(optimizer, 'categorical_crossentropy',
+                          metrics=['accuracy'])
             history = model.fit(train, steps_per_epoch=train.files_count // self.__bs, validation_data=valid,
                                 validation_steps=valid.files_count // self.__bs, verbose=1, epochs=self.__ep,
                                 callbacks=self.__callbacks)  # fitting the model using the generators and the callback function
-            fine_model = tf.keras.models.clone_model(model)  # cloning the model for fine-tuning procedure
-            lrEnd = model.optimizer.lr.numpy()  # get the learning rate on the last trained epoch
-            optimizerFine = tf.keras.optimizers.Adam(lrEnd * 0.07)  # define the new optimizer for the fine-tuning
-            fine_model.compile(optimizerFine, 'categorical_crossentropy', metrics=['accuracy'])
-            fine_model.set_weights(model.get_weights())  # copy the weights of the trained model
+            # cloning the model for fine-tuning procedure
+            fine_model = tf.keras.models.clone_model(model)
+            # get the learning rate on the last trained epoch
+            lrEnd = model.optimizer.lr.numpy()
+            # define the new optimizer for the fine-tuning
+            optimizerFine = tf.keras.optimizers.Adam(lrEnd * 0.07)
+            fine_model.compile(
+                optimizerFine, 'categorical_crossentropy', metrics=['accuracy'])
+            # copy the weights of the trained model
+            fine_model.set_weights(model.get_weights())
             start_epochs = len(history.history['loss'])
             numOfEpochsFineTuning = start_epochs + 10  # fine-tune for 10 epochs
             fine_model.trainable = True
@@ -203,7 +214,8 @@ class TrainVideoClassifierClass:
                                validation_steps=valid.files_count // self.__bs,
                                epochs=numOfEpochsFineTuning, callbacks=self.__callbacksFineTuning,
                                initial_epoch=start_epochs)  # fitting the fine-tuned model
-            loss_fine, acc_fine = fine_model.evaluate(test)  # print the accuracy on the test set
+            loss_fine, acc_fine = fine_model.evaluate(
+                test)  # print the accuracy on the test set
             print('Test accuracy: ', acc_fine)
             # save the fine-tuned model for each fold
             model2save = os.path.join(self.__saveResPath,
@@ -220,13 +232,15 @@ class TrainVideoClassifierClass:
             pickle.dump(testDict, f)
             f.close()
 
-    def __oneFoldTraining(self):  # function to train the model with only one split of the data
+    # function to train the model with only one split of the data
+    def __one_fold_training(self):
         X = self.__globInputVideos
         y = self.__labels
         # 60% of data used for training, 20% for validation and 20% for test
         X_train, X_val, y_train, y_val = train_test_split(X, y, shuffle=True, stratify=y, train_size=0.9,
                                                           random_state=123)
-        X_val, X_test, y_val, y_test = train_test_split(X_val, y_val, stratify=y_val, train_size=0.5, random_state=123)
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_val, y_val, stratify=y_val, train_size=0.5, random_state=123)
         # Use the keras video generator for the training of the model
         train = self.__generator(data_to_take=X_train, bs=self.__bs)
         val = self.__generator(data_to_take=X_val, bs=self.__bs)
@@ -239,31 +253,41 @@ class TrainVideoClassifierClass:
         with open(name2save, "wb") as f:
             pickle.dump(testDict, f)
             f.close()
-        model = deep_network_train(self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)  # create the model
-        optimizer = tf.keras.optimizers.Adam(self.__lr)  # definition of the optimizer, Adam is chosen
-        model.compile(optimizer, 'categorical_crossentropy', metrics=['accuracy'])
+        model = deep_network_train(self.__CNNModel, self.__size, self.__LSTMNeurons,
+                                   self.__DenseNeurons, self.__nClasses)  # create the model
+        # definition of the optimizer, Adam is chosen
+        optimizer = tf.keras.optimizers.Adam(self.__lr)
+        model.compile(optimizer, 'categorical_crossentropy',
+                      metrics=['accuracy'])
         history = model.fit(train, steps_per_epoch=train.files_count // self.__bs, validation_data=val,
                             validation_steps=val.files_count // self.__bs, verbose=1, epochs=self.__ep,
                             callbacks=self.__callbacks)  # fitting the model using the generators and the callback function
-        fine_model = tf.keras.models.clone_model(model)  # cloning the model for fine-tuning procedure
-        lrEnd = model.optimizer.lr.numpy()  # get the learning rate on the last trained epoch
-        optimizerFine = tf.keras.optimizers.Adam(lrEnd * 0.07)  # define the new optimizer for the fine-tuning
-        fine_model.compile(optimizerFine, 'categorical_crossentropy', metrics=['accuracy'])
-        fine_model.set_weights(model.get_weights())  # copy the weights of the trained model
+        # cloning the model for fine-tuning procedure
+        fine_model = tf.keras.models.clone_model(model)
+        # get the learning rate on the last trained epoch
+        lrEnd = model.optimizer.lr.numpy()
+        # define the new optimizer for the fine-tuning
+        optimizerFine = tf.keras.optimizers.Adam(lrEnd * 0.07)
+        fine_model.compile(
+            optimizerFine, 'categorical_crossentropy', metrics=['accuracy'])
+        # copy the weights of the trained model
+        fine_model.set_weights(model.get_weights())
         start_epochs = len(history.history['loss'])
         numOfEpochsFineTuning = start_epochs + 10  # fine-tune for 10 epochs
         _ = fine_model.fit(train, steps_per_epoch=train.files_count // self.__bs, verbose=1,
                            epochs=numOfEpochsFineTuning,
                            callbacks=self.__callbacksFineTuning,
                            initial_epoch=start_epochs)  # fitting the fine-tuned model
-        loss_fine, acc_fine = fine_model.evaluate(test)  # print the accuracy on the test set
+        loss_fine, acc_fine = fine_model.evaluate(
+            test)  # print the accuracy on the test set
         print('Test accuracy: ', acc_fine)
         # save the fine-tuned model
         model2save = os.path.join(self.__saveResPath,
                                   "{}_OneFold_Model{}.h5".format(self.__transformation, self.__CNNModel))
         fine_model.save_weights(model2save)
 
-    def __generator(self, data_to_take, bs=10, sh=True):  # function that returns the keras video generator
+    # function that returns the keras video generator
+    def __generator(self, data_to_take, bs=10, sh=True):
         gen = VideoFrameGenerator(rescale=1 / 255.,
                                   classes=self.__classes,
                                   glob_pattern=self.__dataPath,
