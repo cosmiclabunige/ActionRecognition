@@ -1,10 +1,8 @@
 try:
     import os
-    import cv2
-    import glob
     import shutil
     import numpy as np
-
+    from pathlib import Path 
     from action_recognition.cnn_arch import *
 except Exception as e:
     print('Error loading modules in convert_tflite.py: ', e)
@@ -71,26 +69,19 @@ class ConvertTFLITE:
         assert modelPath2Convert is not None, "Model path to be converted is none"
         assert os.path.exists(modelPath2Convert), "Model Path does not exist"
         # take all the files in the path
-        self.__globModels = glob.glob(modelPath2Convert + '/*')
+        models = modelPath2Convert.rglob("**/*.h5")
+        self.__globModels = [str(match) for match in models if match.is_file()]
+        # check if the list of model is not empty
+        assert len(self.__globModels) > 0, "Not models to convert"
+        self.__globModels.sort()
 
         self.__CNNModel = CNNModel
         if not 1 <= self.__CNNModel <= 9:
             print("CNN Model option not valid: default assigned")
             self.__CNNModel = 2
 
-        indexToDel = []
-        # Remove all the models that are not "h5"
-        for i, m in enumerate(self.__globModels):
-            if "h5" not in m or "Model"+str(self.__CNNModel) not in m:
-                indexToDel.append(i)
-        for ele in sorted(indexToDel, reverse=True):
-            del self.__globModels[ele]
-        # check if the list of model is not empty
-        assert len(self.__globModels) > 0, "Not models to convert"
-        self.__globModels.sort()
-
         # assign by default where the converted models will be saved
-        self.__convertedModelPath = "../ModelsTFLite/" + transformation
+        self.__convertedModelPath = Path("modelsTFLite") / transformation
         if not os.path.exists(self.__convertedModelPath):
             os.makedirs(self.__convertedModelPath)
         # check if the dataset path exists
@@ -110,19 +101,26 @@ class ConvertTFLITE:
         else:
             self.__transformation = transformation
         # check if transformation is in the model path and in the dataset path
-        assert self.__transformation in modelPath2Convert, "Input model path must contain the applied transformation"
-        assert self.__transformation in self.__dataPath, "Dataset path must contain the applied transformation"
+        assert self.__transformation in str(modelPath2Convert), "Input model path must contain the applied transformation"
+        assert self.__transformation in str(self.__dataPath), "Dataset path must contain the applied transformation"
 
         # assign by default the folder for the temporary models
-        self.__modelDirTmp = '../ModelsTmp'
+        self.__modelDirTmp = Path("ModelsTmp")
         if not os.path.exists(self.__modelDirTmp):
             os.mkdir(self.__modelDirTmp)
+        
+        self.__channels = 1
+        # No Transformation is the only one with 3 channels (RGB)
+        if transformation == "No_Trans":
+            self.__channels = 3
+        # add the channel to the size of the input videos
+        self.__size = self.__size + (self.__channels,)
 
     def create_tflite_fp32(self):  # convert in the tflite fp32 bit model
         for m in self.__globModels:
             self.__save_temporary_model(m)  # save the h5 model as pb
             # extract automatically the name of the model
-            name = (m.split('/')[-1]).split('.')[0]
+            name = str(Path(m).name).split('.')[0]
             modelDirTmp = os.path.join(self.__modelDirTmp, name)
             converter = tf.lite.TFLiteConverter.from_saved_model(
                 modelDirTmp)  # initialize the converter object
@@ -143,7 +141,7 @@ class ConvertTFLITE:
         for m in self.__globModels:
             self.__save_temporary_model(m)  # save the h5 model as pb
             # extract automatically the name of the model
-            name = (m.split('/')[-1]).split('.')[0]
+            name = str(Path(m).name).split('.')[0]
             modelDirTmp = os.path.join(self.__modelDirTmp, name)
             converter = tf.lite.TFLiteConverter.from_saved_model(
                 modelDirTmp)  # initialize the converter object
@@ -174,8 +172,8 @@ class ConvertTFLITE:
         shape = np.concatenate(([1], shape))
         concrete_func = run_model.get_concrete_function(
             tf.TensorSpec(shape, neomodel.inputs[0].dtype))
-        modelDirTmp = os.path.join(
-            self.__modelDirTmp, (m.split('/')[-1]).split('.')[0])
+        modelname = str(Path(m).name).split('.')[0]
+        modelDirTmp = os.path.join(self.__modelDirTmp, modelname)
         if os.path.exists(modelDirTmp):
             shutil.rmtree(modelDirTmp)
             os.mkdir(modelDirTmp)
@@ -183,5 +181,4 @@ class ConvertTFLITE:
             os.mkdir(modelDirTmp)
         # convert the model in pb format
         neomodel.save(modelDirTmp, save_format="tf", signatures=concrete_func)
-        print("Tmp folder for Model {} conversion created!".format(
-            m.split('/')[-1]))
+        print("Tmp folder for Model {} conversion created!".format(modelname))

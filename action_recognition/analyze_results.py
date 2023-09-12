@@ -7,7 +7,7 @@ try:
     import pickle as pkl
     import seaborn as sns
     import matplotlib.pyplot as plt
-
+    from pathlib import Path
     from action_recognition.cnn_arch import *
     from keras_video import VideoFrameGenerator
     from sklearn.preprocessing import label_binarize
@@ -39,20 +39,23 @@ class AnalyzeResults:
             CNNModel (int): Model on which to compute the test accuracy, metrics, confusion matrices (default is model 2).
             params (dict): Parameters concerning the input size, the LSTM, and Dense neurons.
         """
-        assert os.path.exists(
-            videoDatasetPath), "Dataset does not exist"  # check if the dataset exist
-        self.__dataPath = videoDatasetPath + \
-            '/{classname}/*.avi'  # used by keras video generator
-        self.__globInputVideos = glob.glob(
-            videoDatasetPath + "/*/*")  # get all the names of data
-        self.__globInputVideos.sort()
-        # get the labels of data automatically
-        self.__labels = np.asarray([int(i.split('/')[-2])
-                                   for i in self.__globInputVideos])
-        self.__classes = list(np.unique(
-            [i.split('/')[-2] for i in self.__globInputVideos]))  # get the classes
+        assert os.path.exists(videoDatasetPath), "Dataset does not exist"  # check if the dataset exist
+        self.__dataPath = videoDatasetPath / '{classname}' / '*.avi'  # used by keras video generator
+        videos = videoDatasetPath.rglob("**/*.avi")
+        self.__globInputVideos = [match for match in videos if match.is_file()]
+        # automatic labels extraction
+        labels = []
+        for files in self.__globInputVideos:
+            lab = files.parent.name
+            try: 
+                labels.append(int(lab))
+            except:
+                continue
+        self.__labels = np.asarray(labels)
+        self.__classes = list(np.unique([i.name for i in videoDatasetPath.glob('*')]))  # classes of the dataset
         self.__classes.sort()
-        self.__nClasses = len(self.__classes)  # get the number of classes
+        self.__nClasses = len(self.__classes)  # number of classes
+
         if params is not None:
             if "size" not in params.keys():
                 print("Input Size missing: default assigned")
@@ -87,22 +90,30 @@ class AnalyzeResults:
         assert os.path.exists(xTestPath), " Test path does not exist: provide the file with the data to be tested: " \
                                           "can be the folder path containing the data or a pickle file containing" \
                                           " the names of the data path to be tested"
-        if xTestPath.endswith("pkl"):  # load the pickle file if exists
+        if str(xTestPath).endswith("pkl"):  # load the pickle file if exists
             with open(xTestPath, 'rb') as f:
                 xTestDict = pkl.load(f)
                 self.__X_test = xTestDict["X_Test"]
                 self.__y_test = xTestDict["y_Test"]
                 f.close()
         else:  # else get all the files that will be used as test set
-            X_test = glob.glob(xTestPath + "/*/*")
-            X_test.sort()
-            self.__y_test = np.asarray([int(i.split('/')[-2]) for i in X_test])
+            X_test = Path(xTestPath).glob("**/*.avi")
+            X_test = [str(match) for match in X_test if match.is_file()]
+            labels = []
+            for files in self.__globInputVideos:
+                lab = files.parent.name
+                try: 
+                    labels.append(int(lab))
+                except:
+                    continue
+            self.__y_test = np.asarray(labels)
             self.__X_test = []
             self.__X_test.append(X_test)
 
         # check if the models' path exists
         assert os.path.exists(modelPath), "Model path does not exist"
-        self.__globModels = glob.glob(modelPath + '/*')
+        models = modelPath.glob("*")
+        self.__globModels = [str(match) for match in models if match.is_file()]
 
         self.__CNNModel = CNNModel
         if not 1 <= self.__CNNModel <= 9:
@@ -141,9 +152,9 @@ class AnalyzeResults:
         else:
             self.__transformation = transformation
         # check if transformation is in the model path, in the dataset path, and in the test data path
-        assert self.__transformation in modelPath, "Input model path must contain the applied transformation"
-        assert self.__transformation in self.__dataPath, "Dataset path must contain the applied transformation"
-        assert self.__transformation in xTestPath, "Test data path must contain the applied transformation"
+        assert self.__transformation in str(modelPath), "Input model path must contain the applied transformation"
+        assert self.__transformation in str(self.__dataPath), "Dataset path must contain the applied transformation"
+        assert self.__transformation in str(xTestPath), "Test data path must contain the applied transformation"
 
         # assign the classes names for plotting the results
         if classesNames is not None:
@@ -189,7 +200,7 @@ class AnalyzeResults:
             model = deep_network_test_and_tflite(
                 self.__CNNModel, self.__size, self.__LSTMNeurons, self.__DenseNeurons, self.__nClasses)
             model.load_weights(mod)
-            print("Testing {}".format(mod.split('/')[-1]))
+            print("Testing {}".format(mod))
             if self.__stratifiedKFolds and len(self.__X_test) > 1:
                 # take the correct dataset to test the model along the folds
                 indexTmp = int(mod[mod.find("Fold") + 4])
@@ -365,8 +376,7 @@ class AnalyzeResults:
         # Create a dictionary for the results
         Metrics = {"Prec": np.mean(precision), "Rec": np.mean(recall), "Spec": np.mean(specifity), "FPR": np.mean(FPR),
                    "FNR": np.mean(FNR), "Acc": np.mean(accuracy), "F1": np.mean(f1score)}
-        fileName = "../Results/" + self.__transformation + "/" + self.__transformation + "_Metrics_Model{}.txt".format(
-            self.__CNNModel)
+        fileName = Path("results") / self.__transformation / f"{self.__transformation}_Metrics_Model{self.__CNNModel}.txt"    
         # Save the results in a file
         print("Metrics have been save at ", fileName)
         with open(fileName, 'w') as f:

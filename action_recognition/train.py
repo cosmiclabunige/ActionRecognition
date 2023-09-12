@@ -1,9 +1,4 @@
 try:
-    import os
-    import glob
-    import pickle
-    import numpy as np
-
     from action_recognition.utils import *
     from action_recognition.cnn_arch import *
     from keras_video import VideoFrameGenerator
@@ -85,15 +80,20 @@ class TrainVideoClassifier:
         assert os.path.exists(videoDatasetPath), "Dataset does not exist"
 
         # path used by the video generator
-        self.__dataPath = videoDatasetPath + '/{classname}/*.avi'
+        self.__dataPath = videoDatasetPath / '{classname}' / '*.avi'
         # globInputVideos contains all the data as paths
-        self.__globInputVideos = glob.glob(videoDatasetPath + "/*/*")
-        self.__globInputVideos.sort()
+        videos = videoDatasetPath.rglob("**/*.avi")
+        self.__globInputVideos = [match for match in videos if match.is_file()]
         # automatic labels extraction
-        self.__labels = np.asarray([int(i.split('/')[-2])
-                                   for i in self.__globInputVideos])
-        self.__classes = list(np.unique(
-            [i.split('/')[-2] for i in self.__globInputVideos]))  # classes of the dataset
+        labels = []
+        for files in self.__globInputVideos:
+            lab = files.parent.name
+            try: 
+                labels.append(int(lab))
+            except:
+                continue
+        self.__labels = np.asarray(labels)
+        self.__classes = list(np.unique([i.name for i in videoDatasetPath.glob('*')]))  # classes of the dataset
         self.__classes.sort()
         self.__nClasses = len(self.__classes)  # number of classes
 
@@ -102,17 +102,17 @@ class TrainVideoClassifier:
         if transformation is None:  # if transformation is not given then assigned the default
             print("Transformation assigned by default: No transformation")
             self.__transformation = "No_Trans"  # default option No Transformation
-            assert self.__transformation in videoDatasetPath, "Input Video path must contain the applied transformation"
+            assert self.__transformation in str(videoDatasetPath), "Input Video path must contain the applied transformation"
         # if the given transformation does not exist then assigned the default
         elif transformation not in listOfPossibleTrans:
             print("Requested transformation is not in the list of the possible transformation: No_Tran "
                   "assigned by default")
             self.__transformation = "No_Trans"
             # check if the transformation is the same of input videos
-            assert self.__transformation in videoDatasetPath, "Input Video path must contain the applied transformation"
+            assert self.__transformation in str(videoDatasetPath), "Input Video path must contain the applied transformation"
         else:
             self.__transformation = transformation
-            assert self.__transformation in videoDatasetPath, "Input Video path must contain the applied transformation"
+            assert self.__transformation in str(videoDatasetPath), "Input Video path must contain the applied transformation"
         self.__channels = 1
         # No Transformation is the only one with 3 channels (RGB)
         if transformation == "No_Trans":
@@ -120,7 +120,7 @@ class TrainVideoClassifier:
         # add the channel to the size of the input videos
         self.__size = self.__size + (self.__channels,)
 
-        tmp1 = "../Results"  # Assign by default the path where the models will be saved
+        tmp1 = Path("results")  # Assign by default the path where the models will be saved
         if not os.path.exists(tmp1):
             os.mkdir(tmp1)
         tmp2 = os.path.join(tmp1, self.__transformation)
@@ -136,7 +136,7 @@ class TrainVideoClassifier:
             # if not, the data will be automatically split in training, validation, and test
             self.__nFolds = 1
 
-        self.__tensorboardLogDir = "../logdir"
+        self.__tensorboardLogDir = Path("logdir")
         if not os.path.exists(self.__tensorboardLogDir):
             os.mkdir(self.__tensorboardLogDir)
         # callbacks for the fit function. The first one is use during the first training, applying an early stop criterion,
@@ -174,11 +174,11 @@ class TrainVideoClassifier:
         for train_index, test_index in skf.split(X, y):
             print("TRAINING FOLD: ", fo)
             # take the training data for the fold
-            X_train = [X[i] for i in train_index]
+            X_train = [str(X[i]) for i in train_index]
             y_train = y[train_index]  # and the label of the training data
             X_tr, X_val = train_test_split(X_train, shuffle=True, stratify=y_train, train_size=60 / 80,
                                            random_state=123 + fo * 834)  # split the training data in training and validation
-            X_test = [X[i] for i in test_index]  # take the test data
+            X_test = [str(X[i]) for i in test_index]  # take the test data
             # and the labels of the test set
             y_test = np.asarray([y[i] for i in test_index])
             testDict["X_Test"].append(X_test)
@@ -207,7 +207,7 @@ class TrainVideoClassifier:
             # copy the weights of the trained model
             fine_model.set_weights(model.get_weights())
             start_epochs = len(history.history['loss'])
-            numOfEpochsFineTuning = start_epochs + 10  # fine-tune for 10 epochs
+            numOfEpochsFineTuning = start_epochs + 1 # fine-tune for 10 epochs
             fine_model.trainable = True
             fine_model.summary()
             _ = fine_model.fit(train, steps_per_epoch=train.files_count // self.__bs, verbose=1, validation_data=valid,
@@ -234,7 +234,7 @@ class TrainVideoClassifier:
 
     # function to train the model with only one split of the data
     def __one_fold_training(self):
-        X = self.__globInputVideos
+        X = [str(x) for x in self.__globInputVideos]
         y = self.__labels
         # 60% of data used for training, 20% for validation and 20% for test
         X_train, X_val, y_train, y_val = train_test_split(X, y, shuffle=True, stratify=y, train_size=0.9,

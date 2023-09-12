@@ -1,14 +1,4 @@
-try:
-    import os
-    import re
-    import cv2
-    import glob
-    import shutil
-    import numpy as np
-
-    from action_recognition.utils import *
-except Exception as e:
-    print('Error loading modules in image_transformation.py: ', e)
+from action_recognition.utils import *
 
 
 class ImagesTransformation:
@@ -39,19 +29,15 @@ class ImagesTransformation:
             print("Transforming data by {} transformation".format(transformation))
             self.__transformation = transformation
 
-        assert os.path.exists(
-            imagesInputPath), "Input images path does not exist"
-        # it will contain all the sub-folders for each class
-        self.__globInputImagesPath = glob.glob(imagesInputPath + "/*/*")
-        self.__globInputImagesPath.sort()
-
+        assert os.path.exists(imagesInputPath), "Input images path does not exist" # it will contain all the sub-folders for each class
         # find the name of the classes
-        self.__classes = list(
-            np.unique([i.split('/')[-2] for i in self.__globInputImagesPath]))
-
+        classes = imagesInputPath.glob("*")
+        self.__classes = list(np.unique([i.name for i in classes]))
+        
+        self.__globInputImagesPath = imagesInputPath.rglob("*")
+        
         if videosOutputPath is None:
-            self.__videosTransOutputPath = "../Dataset/Videos_" + \
-                self.__transformation  # default output video folder
+            self.__videosTransOutputPath = Path("dataset") / "videos_" + self.__transformation  # default output video folder
         else:
             self.__videosTransOutputPath = videosOutputPath
         # create the output folder if it does not exist
@@ -71,11 +57,14 @@ class ImagesTransformation:
 
     def __transform_images(self):
         for fol in self.__globInputImagesPath:  # for each sub-folder
-            print(re.split(r'[\\\/]', fol))
-            # find the index of the corresponding class in the classes list
-            indexClass = self.__classes.index(re.split(r'[\\\/]', fol)[-2])
+            cl = fol.parent.name
+            try:
+                # find the index of the corresponding class in the classes list
+                indexClass = self.__classes.index(cl)
+            except:
+                continue
             # find the number of the sub-folder
-            objectNum = int(re.split(r'[\\\/]', fol)[-1])
+            objectNum = int(fol.name)
             imgList = os.listdir(fol)  # list of the images in each sub-folder
             imgList.sort()
             imgForVideo = []  # this list collects the transformed images to be transformed in a video
