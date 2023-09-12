@@ -1,25 +1,26 @@
 try:
-    from action_recognition.train import TrainVideoClassifier
-    from action_recognition.convert_tflite import ConvertTFLITE
-    from action_recognition.analyze_results import AnalyzeResults
+    from pathlib import Path
     from action_recognition.image_transformation import ImagesTransformation
+    from action_recognition.train import TrainVideoClassifier
+    from action_recognition.analyze_results import AnalyzeResults
+    from action_recognition.convert_tflite import ConvertTFLITE
 except Exception as e:
     print('Error loading modules in main.py: ', e)
 
 
-def main():
+def main(): 
     # Define input and output paths
-    inputImagesPath = "./Dataset/Images"  # Dataset path for training
+    inputImagesPath = Path("dataset") / "images"  # Dataset path for training
     transformation = "No_Trans_Gray"  # Transformation
     model = 2  # Model architecture to train
 
     # Path to save the sequences
-    videosOutputPath = f"../Dataset/Videos_{transformation}"
-    nFolds = 5  # Number of folds for training
+    videosOutputPath = Path("dataset") / f"videos_{transformation}"
+    nFolds = 3  # Number of folds for training
     inputVideoPath = videosOutputPath  # Path of the sequences for training
     
     # Model path for result analysis
-    modelPath = f"../Results/{transformation}"
+    modelPath = Path("results") / f"{transformation}"
 
     # Convert the images into sequences applying the transformation
     ImagesTransformation(
@@ -40,10 +41,10 @@ def main():
     # Determine the path for testing based on the number of folds
     if nFolds > 1:
         stratifiedKFolds = True
-        xTestpath = f"../Results/{transformation}/X_Test_{transformation}_StratifiedKFolds_Model{model}.pkl"
+        xTestpath = Path("results") / f"{transformation}" / f"X_Test_{transformation}_StratifiedKFolds_Model{model}.pkl"
     else:
         stratifiedKFolds = False
-        xTestpath = f"../Results/{transformation}/X_Test_{transformation}_OneFold_Model{model}.pkl"
+        xTestpath = Path("results") / f"{transformation}" / f"X_Test_{transformation}_OneFold_Model{model}.pkl"
 
     # Test the model, compute the confusion matrix, plot the ROC and AUC curves, compute the metrics
     ARC = AnalyzeResults(
